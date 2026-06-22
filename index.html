@@ -291,9 +291,25 @@
 </div>
 <div class="toast" id="toast"></div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 (function(){
 "use strict";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDjsK8k19Ac6dNfMFOVeaU6pgE9kFZQ9Z4",
+  authDomain: "world-cup-prediction-gam-b0c95.firebaseapp.com",
+  databaseURL: "https://world-cup-prediction-gam-b0c95-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "world-cup-prediction-gam-b0c95",
+  storageBucket: "world-cup-prediction-gam-b0c95.firebasestorage.app",
+  messagingSenderId: "545168973807",
+  appId: "1:545168973807:web:28c08a52dbdc9bbee4601a"
+};
+firebase.initializeApp(firebaseConfig);
+window.__db = firebase.database().ref("game");
+})();
+</script>
 
 /* ─────────────── Data: groups (draw-position order), matchday dates ─────────────── */
 const ISO={
@@ -351,8 +367,9 @@ function shortName(t){ return t.replace("Bosnia & Herzegovina","Bosnia"); }
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 const $=id=>document.getElementById(id);
 
-/* ─────────────── Storage: localStorage (works on any hosted https page) ─────────────── */
+/* ─────────────── Storage: Firebase Realtime Database (shared) + localStorage fallback ─────────────── */
 const KEY="wc2026_duel_v1";
+const db = window.__db || null;
 function load(){ try{ const v=localStorage.getItem(KEY); return v?JSON.parse(v):null; }catch(e){ return null; } }
 function save(){ try{ localStorage.setItem(KEY,JSON.stringify(state)); }catch(e){} }
 function applyData(d){
@@ -363,6 +380,30 @@ function applyData(d){
   state.ko=Array.isArray(d.ko)?d.ko:[];
 }
 function nameFocused(){ const a=document.activeElement; return !!(a && a.classList && a.classList.contains("name")); }
+function canon(o){ return JSON.stringify({p1:o.p1,p2:o.p2,picks:o.picks||{},results:o.results||{},ko:o.ko||[]}); }
+
+let remoteReady=false, suppressEcho=false;
+function pushRemote(){
+  if(!db) return;
+  suppressEcho=true;
+  db.set({p1:state.p1,p2:state.p2,picks:state.picks,results:state.results,ko:state.ko})
+    .catch(e=>console.error("Firebase write failed:",e))
+    .finally(()=>{ setTimeout(()=>{ suppressEcho=false; }, 250); });
+}
+function listenRemote(){
+  if(!db) return;
+  db.on("value", snap=>{
+    const d=snap.val();
+    remoteReady=true;
+    renderConn(true);
+    if(suppressEcho) return;
+    if(!d) return;
+    if(nameFocused()) return;
+    if(canon(d)===canon(state)) return;
+    applyData(d); save(); renderActive(); renderHeader();
+  }, err=>{ console.error("Firebase read failed:", err); renderConn(false); });
+  setTimeout(()=>{ if(!remoteReady) renderConn(false); }, 4000);
+}
 
 /* ─────────────── State ─────────────── */
 let state={ p1:"Jerry", p2:"Kalipok", picks:{}, results:{}, ko:[] };
@@ -371,6 +412,7 @@ let tab="group", curGroup="A", koRound="R16";
 function commit(mutator, skipRender){
   mutator(state); save();
   if(!skipRender){ renderActive(); renderHeader(); }
+  pushRemote();
 }
 
 /* ─────────────── Scoring ─────────────── */
@@ -522,8 +564,20 @@ function render(){
   $("tab-ko").setAttribute("aria-selected", tab==="ko");
   renderHeader(); renderActive();
 }
-function renderInfoBar(){
-  $("syncbar").innerHTML=`<div class="syncbar info"><span class="i">💾</span><span>Saved on this device. Tap <b>Backup</b> after you pick — that code restores everything if anything ever goes wrong.</span></div>`;
+function renderInfoBar(){ renderConn(null); }
+function renderConn(ok){
+  const el=$("syncbar");
+  if(!db){
+    el.innerHTML=`<div class="syncbar info"><span class="i">💾</span><span>No shared database configured — saved on this device only.</span></div>`;
+    return;
+  }
+  if(ok===true){
+    el.innerHTML=`<div class="syncbar info" style="border-color:#2f6b44;background:#15291c;color:#bfe8cd"><span class="i">🟢</span><span>Live — you and ${esc(state.p2)} share one board.</span></div>`;
+  }else if(ok===false){
+    el.innerHTML=`<div class="syncbar info" style="border-color:#5a4424;background:#241a0f;color:#e9d2a6"><span class="i">⚠️</span><span>Can't reach the shared database right now — picks save locally and will sync once it reconnects.</span></div>`;
+  }else{
+    el.innerHTML=`<div class="syncbar info"><span class="i">💾</span><span>Connecting to shared board…</span></div>`;
+  }
 }
 
 /* ─────────────── Backup / Restore ─────────────── */
@@ -632,6 +686,7 @@ $("footnote").textContent="Saved on this device. On a hosted https:// page (GitH
   applyData(load());
   renderInfoBar();
   render();
+  listenRemote();
 })();
 })();
 </script>
