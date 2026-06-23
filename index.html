@@ -233,6 +233,13 @@
   @media(max-width:360px){
     .score{font-size:46px} .row .who{flex-basis:44px;font-size:10px} .tname{font-size:13.5px}
   }
+  /* desktop (mouse): show a thin scrollbar so the group / round bars are scrollable */
+  @media (hover:hover) and (pointer:fine){
+    .chips,.rounds{scrollbar-width:thin;scrollbar-color:#3a455d transparent}
+    .chips::-webkit-scrollbar,.rounds::-webkit-scrollbar{display:block;height:8px}
+    .chips::-webkit-scrollbar-thumb,.rounds::-webkit-scrollbar-thumb{background:#3a455d;border-radius:10px}
+    .chips::-webkit-scrollbar-track,.rounds::-webkit-scrollbar-track{background:transparent}
+  }
 </style>
 </head>
 <body>
@@ -506,6 +513,7 @@ function koCard(m){
 /* ─────────────── Render: views ─────────────── */
 function renderGroup(){
   const v=$("view");
+  const _sx=(v.querySelector(".chips")||{}).scrollLeft||0;
   const chips=Object.keys(GROUPS).map(g=>{
     const teams=GROUPS[g].teams.map(t=>flag(t,true)).join("");
     return `<button class="chip" data-g="${g}" aria-selected="${g===curGroup}">Group ${g}<small>${teams}</small></button>`;
@@ -526,11 +534,13 @@ function renderGroup(){
     <p class="hint"><span>👉</span><span>Each of you taps <b>1 / X / 2</b>. Set <b>Result</b> as games finish — scores update on their own. 1&nbsp;point per correct call.</span></p>
     <div class="chips">${chips}</div>
     ${body}`;
+  const _c=v.querySelector(".chips"); if(_c) _c.scrollLeft=_sx;
 }
 
 const ROUNDS=[["R32","Round of 32"],["R16","Round of 16"],["QF","Quarter-final"],["SF","Semi-final"],["3P","Third place"],["F","Final"]];
 function renderKO(){
   const v=$("view");
+  const _sx=(v.querySelector(".rounds")||{}).scrollLeft||0;
   const rbtns=ROUNDS.map(([k,l])=>`<button class="rbtn" data-r="${k}" aria-selected="${k===koRound}">${l}</button>`).join("");
   const a=esc((document.getElementById("ta")?document.getElementById("ta").value:""));
   let list="";
@@ -555,6 +565,7 @@ function renderKO(){
       <button class="addbtn" id="addKo" disabled>Add tie</button>
     </div>
     ${list}`;
+  const _r=v.querySelector(".rounds"); if(_r) _r.scrollLeft=_sx;
   syncAddBtn();
 }
 function syncAddBtn(){
@@ -665,6 +676,16 @@ document.body.addEventListener("click",e=>{
   }
 });
 $("modal").addEventListener("click",e=>{ if(e.target.id==="modal") closeModal(); });
+
+/* desktop (mouse wheel): scroll the group / round bars horizontally */
+document.addEventListener("wheel",function(e){
+  const bar=e.target.closest&&e.target.closest(".chips,.rounds");
+  if(!bar) return;
+  if(bar.scrollWidth<=bar.clientWidth) return;
+  if(Math.abs(e.deltaY)<=Math.abs(e.deltaX)) return;
+  bar.scrollLeft+=e.deltaY;
+  e.preventDefault();
+},{passive:false});
 
 document.body.addEventListener("input",e=>{
   if(e.target.id==="ta"||e.target.id==="tb"){ syncAddBtn(); return; }
